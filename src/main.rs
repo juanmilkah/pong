@@ -2,11 +2,14 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::anyhow;
+use rand::{Rng, rng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 
 const W_WIDTH: u32 = 800;
 const W_HEIGHT: u32 = 600;
 const SPEED: i32 = 5;
+const BLOCK_WIDTH: u32 = 30;
+const BLOCK_HEIGHT: u32 = 30;
 
 struct Block {
     x: i32,
@@ -19,13 +22,21 @@ struct Block {
 
 impl Block {
     fn new() -> Self {
+        let mut rng = rng();
+        let width = rng.random_range(30..70);
+        let height = rng.random_range(30..70);
+        let x = rng.random_range(0..W_WIDTH - width) as i32;
+        let y = rng.random_range(0..W_HEIGHT - height) as i32;
+
+        let velocity_x = if rng.random_bool(0.5) { 1 } else { -1 };
+        let velocity_y = if rng.random_bool(0.5) { 1 } else { -1 };
         Self {
-            x: 0,
-            y: 0,
-            width: 50,
-            height: 50,
-            velocity_x: 1,
-            velocity_y: 1,
+            x,
+            y,
+            width: BLOCK_WIDTH,
+            height: BLOCK_HEIGHT,
+            velocity_x,
+            velocity_y,
         }
     }
 }
@@ -75,7 +86,8 @@ async fn main() -> anyhow::Result<()> {
         .build()
         .map_err(|err| anyhow!("window into canvas: {}", err))?;
 
-    let mut current_block = Block::new();
+    // 5 blocks
+    let mut blocks = (0..5).map(|_| Block::new()).collect::<Vec<Block>>();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
@@ -98,12 +110,12 @@ async fn main() -> anyhow::Result<()> {
         };
         canvas.set_draw_color(b_color);
 
-        for _ in 0..5 {
+        for block in blocks.iter_mut() {
             canvas
-                .fill_rect(get_block_position(&mut current_block))
+                .fill_rect(get_block_position(block))
                 .map_err(|err| anyhow!("ERROR: {}", err))?;
-            canvas.present();
         }
+        canvas.present();
         let c_color = Color {
             r: 0,
             g: 0,
