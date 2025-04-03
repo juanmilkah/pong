@@ -5,15 +5,12 @@ use anyhow::anyhow;
 use rand::{Rng, rng};
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
 
-const W_WIDTH: u32 = 800;
-const W_HEIGHT: u32 = 600;
 const BLOCK_SPEED: i32 = 5;
 const BAR_SPEED: i32 = 60;
 const BLOCK_WIDTH: u32 = 30;
 const BLOCK_HEIGHT: u32 = 30;
 const BAR_WIDTH: u32 = 200;
 const BAR_HEIGHT: u32 = 30;
-const PADDING: i32 = 50;
 const BAR_COLOR: Color = Color {
     r: 0,
     g: 0,
@@ -33,6 +30,11 @@ const WINDOW_COLOR: Color = Color {
     a: 255,
 };
 
+struct WinDimensions {
+    width: u32,
+    height: u32,
+}
+
 struct Block {
     x: i32,
     y: i32,
@@ -44,14 +46,14 @@ struct Block {
 }
 
 impl Block {
-    fn new() -> Self {
+    fn new(w_dimensions: &WinDimensions) -> Self {
         let mut rng = rng();
-        let width = rng.random_range(30..70);
-        let x = rng.random_range(0..W_WIDTH - width) as i32;
-
+        let width = (w_dimensions.width as f32 * 0.05) as u32; // 5% of screen width
+        let x = rng.random_range(0..w_dimensions.width - width) as i32;
+        let padding = (w_dimensions.height as f32 * 0.10) as i32;
         Self {
             x,
-            y: PADDING,
+            y: padding,
             width: BLOCK_WIDTH,
             height: BLOCK_HEIGHT,
             velocity_x: 0,
@@ -60,7 +62,7 @@ impl Block {
         }
     }
 
-    fn update_position(&mut self, bar: &Bar) {
+    fn update_position(&mut self, bar: &Bar, w_dimensions: &WinDimensions) {
         let old_y = self.y;
         // update position based on velocity and SPEED
         self.x += self.velocity_x * BLOCK_SPEED;
@@ -73,8 +75,8 @@ impl Block {
             if self.x <= 0 {
                 self.x = 0;
                 self.velocity_x = 1;
-            } else if self.x + self.width as i32 >= W_WIDTH as i32 {
-                self.x = W_WIDTH as i32 - self.width as i32;
+            } else if self.x + self.width as i32 >= w_dimensions.width as i32 {
+                self.x = w_dimensions.width as i32 - self.width as i32;
                 self.velocity_x = -1;
             }
         }
@@ -88,8 +90,8 @@ impl Block {
                 // randomly choose x direction
                 self.velocity_x = if rng.random_bool(0.5) { 1 } else { -1 };
             }
-        } else if self.y + self.width as i32 >= W_HEIGHT as i32 {
-            self.y = W_HEIGHT as i32 - self.width as i32;
+        } else if self.y + self.width as i32 >= w_dimensions.height as i32 {
+            self.y = w_dimensions.height as i32 - self.height as i32;
             self.velocity_y = -1;
             if self.first_bounce {
                 self.first_bounce = false;
@@ -132,9 +134,9 @@ struct Bar {
 }
 
 impl Bar {
-    fn new() -> Self {
-        let x = (W_WIDTH as i32 - BAR_WIDTH as i32) / 2; // center
-        let y = W_HEIGHT as i32 - PADDING;
+    fn new(w_dimensions: &WinDimensions) -> Self {
+        let x = (w_dimensions.width as i32 - BAR_WIDTH as i32) / 2; // center
+        let y = w_dimensions.height as i32 - (w_dimensions.height as f32 * 0.10) as i32;
         Self {
             x,
             y,
@@ -144,7 +146,7 @@ impl Bar {
         }
     }
 
-    fn update_position(&mut self, dir: Direction) {
+    fn update_position(&mut self, dir: Direction, w_dimensions: &WinDimensions) {
         self.velocity_x = match dir {
             Direction::Right => 1,
             Direction::Left => -1,
@@ -156,8 +158,8 @@ impl Bar {
         if self.x <= 0 {
             self.x = 0;
             self.velocity_x = 1;
-        } else if self.x + self.width as i32 >= W_WIDTH as i32 {
-            self.x = W_WIDTH as i32 - self.width as i32;
+        } else if self.x + self.width as i32 >= w_dimensions.width as i32 {
+            self.x = w_dimensions.width as i32 - self.width as i32;
             self.velocity_x = -1;
         }
     }
@@ -168,8 +170,18 @@ fn main() -> anyhow::Result<()> {
     let video_subsystem = sdl_context
         .video()
         .map_err(|err| anyhow!("get video subsystem: {}", err))?;
+
+    let display_bounds = video_subsystem
+        .display_bounds(0)
+        .map_err(|err| anyhow!("display bounds: {}", err))?;
+
+    let w_dimensions = WinDimensions {
+        width: display_bounds.width(),
+        height: display_bounds.height(),
+    };
+
     let window = video_subsystem
-        .window("Pong", W_WIDTH, W_HEIGHT)
+        .window("Pong", w_dimensions.width, w_dimensions.height)
         .position_centered()
         .opengl()
         .build()
@@ -182,8 +194,8 @@ fn main() -> anyhow::Result<()> {
         .build()
         .map_err(|err| anyhow!("window into canvas: {}", err))?;
 
-    let mut block = Block::new();
-    let mut bar = Bar::new();
+    let mut block = Block::new(&w_dimensions);
+    let mut bar = Bar::new(&w_dimensions);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
@@ -198,13 +210,13 @@ fn main() -> anyhow::Result<()> {
                     keycode: Some(Keycode::LEFT),
                     ..
                 } => {
-                    bar.update_position(Direction::Left);
+                    bar.update_position(Direction::Left, &w_dimensions);
                 }
                 sdl2::event::Event::KeyDown {
                     keycode: Some(Keycode::RIGHT),
                     ..
                 } => {
-                    bar.update_position(Direction::Right);
+                    bar.update_position(Direction::Right, &w_dimensions);
                 }
                 _ => {}
             }
@@ -222,7 +234,7 @@ fn main() -> anyhow::Result<()> {
 
         let position = Rect::new(block.x, block.y, block.width, block.height);
         canvas.set_draw_color(BLOCK_COLOR);
-        block.update_position(&bar);
+        block.update_position(&bar, &w_dimensions);
         canvas
             .fill_rect(position)
             .map_err(|err| anyhow!("ERROR: {}", err))?;
