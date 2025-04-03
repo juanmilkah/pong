@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.97"
 rand = "0.9.0"
-sdl2 = "0.37.0"
+sdl2 = { version = "0.37.0", default-features = false, features = ["ttf"] }

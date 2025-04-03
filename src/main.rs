@@ -1,12 +1,12 @@
-use std::thread;
 use std::time::Duration;
+use std::{path::Path, thread};
 
 use anyhow::anyhow;
 use rand::{Rng, rng};
-use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect};
+use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect, ttf::FontStyle};
 
 const BLOCK_SPEED: i32 = 5;
-const BAR_SPEED: i32 = 60;
+const BAR_SPEED: i32 = 70;
 const BLOCK_WIDTH: u32 = 30;
 const BLOCK_HEIGHT: u32 = 30;
 const BAR_WIDTH: u32 = 200;
@@ -29,6 +29,29 @@ const WINDOW_COLOR: Color = Color {
     b: 0,
     a: 255,
 };
+
+const SCORE_COLOR: Color = Color {
+    r: 255,
+    g: 165,
+    b: 0,
+    a: 255,
+};
+
+struct GameState {
+    score: u32,
+    lives: u8,
+    game_over: bool,
+}
+
+impl GameState {
+    fn new() -> Self {
+        Self {
+            score: 0,
+            lives: 3,
+            game_over: false,
+        }
+    }
+}
 
 struct WinDimensions {
     width: u32,
@@ -62,7 +85,7 @@ impl Block {
         }
     }
 
-    fn update_position(&mut self, bar: &Bar, w_dimensions: &WinDimensions) {
+    fn update_position(&mut self, bar: &Bar, w_dimensions: &WinDimensions, game: &mut GameState) {
         let old_y = self.y;
         // update position based on velocity and SPEED
         self.x += self.velocity_x * BLOCK_SPEED;
@@ -109,6 +132,7 @@ impl Block {
         // block right < bar left
         {
             // bounce the block off the bar
+            game.score += 10;
             self.velocity_y = -1;
             self.y = bar.y - self.height as i32;
             if self.first_bounce {
@@ -167,6 +191,14 @@ impl Bar {
 
 fn main() -> anyhow::Result<()> {
     let sdl_context = sdl2::init().map_err(|err| anyhow::anyhow!("initialise sdl: {}", err))?;
+    let ttf_context = sdl2::ttf::init().map_err(|err| anyhow!("Initialise ttf: {}", err))?;
+    let font_path = Path::new("resources/EnvyCodeRNerdFontMono-Bold.ttf");
+
+    let mut font = ttf_context
+        .load_font(font_path, 36)
+        .map_err(|err| anyhow!("load font:{}", err))?;
+    font.set_style(FontStyle::BOLD);
+
     let video_subsystem = sdl_context
         .video()
         .map_err(|err| anyhow!("get video subsystem: {}", err))?;
@@ -194,6 +226,7 @@ fn main() -> anyhow::Result<()> {
         .build()
         .map_err(|err| anyhow!("window into canvas: {}", err))?;
 
+    let mut game = GameState::new();
     let mut block = Block::new(&w_dimensions);
     let mut bar = Bar::new(&w_dimensions);
 
@@ -226,6 +259,21 @@ fn main() -> anyhow::Result<()> {
         canvas.set_draw_color(WINDOW_COLOR);
         canvas.clear();
 
+        let score_text = format!("SCORE: {}", game.score);
+        let surface = font
+            .render(&score_text)
+            .blended(SCORE_COLOR)
+            .map_err(|err| anyhow!("render score: {}", err))?;
+
+        let tx_creator = canvas.texture_creator();
+        let texture = tx_creator
+            .create_texture_from_surface(&surface)
+            .map_err(|err| anyhow!("create texture from surface: {}", err))?;
+        let s_target = Rect::new(10, 10, surface.width(), surface.height());
+        canvas
+            .copy(&texture, None, s_target)
+            .map_err(|err| anyhow!("copy texture to score_target: {}", err))?;
+
         canvas.set_draw_color(BAR_COLOR);
         let b_position = Rect::new(bar.x, bar.y, bar.width, bar.height);
         canvas
@@ -234,7 +282,7 @@ fn main() -> anyhow::Result<()> {
 
         let position = Rect::new(block.x, block.y, block.width, block.height);
         canvas.set_draw_color(BLOCK_COLOR);
-        block.update_position(&bar, &w_dimensions);
+        block.update_position(&bar, &w_dimensions, &mut game);
         canvas
             .fill_rect(position)
             .map_err(|err| anyhow!("ERROR: {}", err))?;
