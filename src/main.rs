@@ -14,7 +14,6 @@ const BAR_HEIGHT: u32 = 30;
 const BRICK_WIDTH: u32 = 60;
 const BRICK_HEIGHT: u32 = 20;
 const ROW_COUNT: usize = 5;
-const COL_COUNT: usize = 10;
 const BRICK_PADDING: u32 = 10;
 const POINTS: u32 = 10;
 const BAR_COLOR: Color = Color {
@@ -91,16 +90,17 @@ impl Brick {
 
 fn get_bricks(w_dimensions: &WinDimensions) -> Vec<Brick> {
     let mut bricks = Vec::new();
+    let col_count = w_dimensions.width as i32 / (BRICK_WIDTH as i32 + BRICK_PADDING as i32) - 5;
 
     let total_width =
-        (BRICK_WIDTH as i32 * COL_COUNT as i32) + (BRICK_PADDING as i32 * (COL_COUNT as i32 - 1));
+        (BRICK_WIDTH as i32 * col_count as i32) + (BRICK_PADDING as i32 * (col_count as i32 - 1));
 
     // starting  positions
     let start_x = (w_dimensions.width as i32 - total_width) / 2;
     let start_y = 50;
 
     for row in 0..ROW_COUNT {
-        for col in 0..COL_COUNT {
+        for col in 0..col_count {
             let brick_x = start_x + col as i32 * (BRICK_WIDTH as i32 + BRICK_PADDING as i32);
             let brick_y = start_y + row as i32 * (BRICK_HEIGHT as i32 + BRICK_PADDING as i32);
             bricks.push(Brick::new(brick_x, brick_y));
@@ -120,14 +120,16 @@ struct Block {
 }
 
 impl Block {
-    fn new(w_dimensions: &WinDimensions) -> Self {
+    fn new(bar: &Bar) -> Self {
+        // the block should start on top of the bar
         let mut rng = rng();
-        let width = (w_dimensions.width as f32 * 0.05) as u32; // 5% of screen width
-        let x = rng.random_range(0..w_dimensions.width - width) as i32;
-        let padding = w_dimensions.height as i32 - (w_dimensions.height as f32 * 0.10) as i32;
+        let x = bar.x + (BAR_WIDTH as i32 / 2) + rng.random_range(0..100);
+        let y = bar.y - (BAR_HEIGHT as i32);
+
+        // let velocity_x = if rng.random_bool(0.5) { 1 } else { -1 };
         Self {
             x,
-            y: padding,
+            y,
             width: BLOCK_WIDTH,
             height: BLOCK_HEIGHT,
             velocity_x: 0,
@@ -204,7 +206,7 @@ impl Block {
                 }
 
                 //reset block position
-                *self = Block::new(w_dimensions);
+                *self = Block::new(&Bar::new(w_dimensions));
                 return;
             }
 
@@ -312,8 +314,8 @@ fn main() -> anyhow::Result<()> {
         .map_err(|err| anyhow!("window into canvas: {}", err))?;
 
     let mut game = GameState::new();
-    let mut block = Block::new(&w_dimensions);
     let mut bar = Bar::new(&w_dimensions);
+    let mut block = Block::new(&bar);
     let mut bricks = get_bricks(&w_dimensions);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -413,7 +415,7 @@ fn main() -> anyhow::Result<()> {
             .map_err(|err| anyhow!("create texture from surface: {}", err))?;
         let target = Rect::new(
             (w_dimensions.width - surface.width()) as i32 / 2,
-            (w_dimensions.width - surface.height()) as i32 / 2 - 50,
+            (w_dimensions.height - surface.height()) as i32 / 2 - 50,
             surface.width(),
             surface.height(),
         );
