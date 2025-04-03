@@ -10,6 +10,26 @@ const W_HEIGHT: u32 = 600;
 const SPEED: i32 = 5;
 const BLOCK_WIDTH: u32 = 30;
 const BLOCK_HEIGHT: u32 = 30;
+const BAR_WIDTH: u32 = 200;
+const BAR_HEIGHT: u32 = 30;
+const BAR_COLOR: Color = Color {
+    r: 0,
+    g: 0,
+    b: 255,
+    a: 255,
+};
+const BLOCK_COLOR: Color = Color {
+    r: 0,
+    g: 255,
+    b: 0,
+    a: 255,
+};
+const WINDOW_COLOR: Color = Color {
+    r: 0,
+    g: 0,
+    b: 0,
+    a: 255,
+};
 
 struct Block {
     x: i32,
@@ -39,31 +59,78 @@ impl Block {
             velocity_y,
         }
     }
+
+    fn update_position(&mut self, bar: &Bar) {
+        let old_y = self.y;
+        // update position based on velocity and SPEED
+        self.x += self.velocity_x * SPEED;
+        self.y += self.velocity_y * SPEED;
+
+        // check horizontal boundaries
+        if self.x <= 0 {
+            self.x = 0;
+            self.velocity_x = 1;
+        } else if self.x + self.width as i32 >= W_WIDTH as i32 {
+            self.x = W_WIDTH as i32 - self.width as i32;
+            self.velocity_x = -1;
+        }
+
+        // check for vertical boundaries
+        if self.y <= 0 {
+            self.y = 0;
+            self.velocity_y = 1;
+        } else if self.y + self.width as i32 >= W_HEIGHT as i32 {
+            self.y = W_HEIGHT as i32 - self.width as i32;
+            self.velocity_y = -1;
+        }
+
+        // check for collision with bar
+        if self.velocity_y > 0 // moving downwards 
+            && self.y + self.height as i32 >= bar.y // block on top of bar 
+            && old_y + self.height as i32 <= bar.y // on prev frame block above bar
+            && self.x + self.width as i32 >= bar.x // block left > bar right
+            && self.x < bar.x +bar.width as i32
+        // block right < bar left
+        {
+            // bounce the block off the bar
+            self.velocity_y = -1;
+            self.y = bar.y - self.height as i32;
+        }
+    }
 }
 
-fn get_block_position(block: &mut Block) -> Rect {
-    // update position based on velocity and SPEED
-    block.x += block.velocity_x * SPEED;
-    block.y += block.velocity_y * SPEED;
+struct Bar {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    velocity_x: i32,
+}
 
-    // check horizontal boundaries
-    if block.x <= 0 {
-        block.x = 0;
-        block.velocity_x = 1;
-    } else if block.x + block.width as i32 >= W_WIDTH as i32 {
-        block.x = W_WIDTH as i32 - block.width as i32;
-        block.velocity_x = -1;
+impl Bar {
+    fn new() -> Self {
+        let y = W_HEIGHT as i32 - 50;
+        Self {
+            x: 100,
+            y,
+            width: BAR_WIDTH,
+            height: BAR_HEIGHT,
+            velocity_x: 1,
+        }
     }
 
-    // check for vertical boundaries
-    if block.y <= 0 {
-        block.y = 0;
-        block.velocity_y = 1;
-    } else if block.y + block.width as i32 >= W_HEIGHT as i32 {
-        block.y = W_HEIGHT as i32 - block.width as i32;
-        block.velocity_y = -1;
+    fn update_position(&mut self) {
+        self.x += self.velocity_x * SPEED;
+
+        // check horizontal boundaries
+        if self.x <= 0 {
+            self.x = 0;
+            self.velocity_x = 1;
+        } else if self.x + self.width as i32 >= W_WIDTH as i32 {
+            self.x = W_WIDTH as i32 - self.width as i32;
+            self.velocity_x = -1;
+        }
     }
-    Rect::new(block.x, block.y, block.width, block.height)
 }
 
 #[tokio::main]
@@ -88,6 +155,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 5 blocks
     let mut blocks = (0..5).map(|_| Block::new()).collect::<Vec<Block>>();
+    let mut bar = Bar::new();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
@@ -102,27 +170,23 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        let b_color = Color {
-            r: 0,
-            g: 255,
-            b: 0,
-            a: 5,
-        };
-        canvas.set_draw_color(b_color);
+        canvas.set_draw_color(BAR_COLOR);
+        let b_position = Rect::new(bar.x, bar.y, bar.width, bar.height);
+        canvas
+            .fill_rect(b_position)
+            .map_err(|err| anyhow!("ERROR: {}", err))?;
+        bar.update_position();
 
         for block in blocks.iter_mut() {
+            let position = Rect::new(block.x, block.y, block.width, block.height);
+            canvas.set_draw_color(BLOCK_COLOR);
             canvas
-                .fill_rect(get_block_position(block))
+                .fill_rect(position)
                 .map_err(|err| anyhow!("ERROR: {}", err))?;
+            block.update_position(&bar);
         }
         canvas.present();
-        let c_color = Color {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 0,
-        };
-        canvas.set_draw_color(c_color);
+        canvas.set_draw_color(WINDOW_COLOR);
         canvas.clear();
         thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
