@@ -133,8 +133,7 @@ impl Bar {
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     let sdl_context = sdl2::init().map_err(|err| anyhow::anyhow!("initialise sdl: {}", err))?;
     let video_subsystem = sdl_context
         .video()
@@ -170,6 +169,10 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
+        // clear screen
+        canvas.set_draw_color(WINDOW_COLOR);
+        canvas.clear();
+
         canvas.set_draw_color(BAR_COLOR);
         let b_position = Rect::new(bar.x, bar.y, bar.width, bar.height);
         canvas
@@ -178,16 +181,14 @@ async fn main() -> anyhow::Result<()> {
         bar.update_position();
 
         for block in blocks.iter_mut() {
+            block.update_position(&bar);
             let position = Rect::new(block.x, block.y, block.width, block.height);
             canvas.set_draw_color(BLOCK_COLOR);
             canvas
                 .fill_rect(position)
                 .map_err(|err| anyhow!("ERROR: {}", err))?;
-            block.update_position(&bar);
         }
         canvas.present();
-        canvas.set_draw_color(WINDOW_COLOR);
-        canvas.clear();
         thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
 
