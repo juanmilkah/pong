@@ -4,7 +4,7 @@ In archlinux you might need `sdl2_ttf` package.
 
 # Features to Implement
 
-1. Scoring System
+1. Scoring System (implemented)
    Track points when the ball passes the paddle (game over) or when it hits bricks
    Display score on screen using SDL2's TTF extension
 
