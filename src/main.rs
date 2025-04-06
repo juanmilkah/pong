@@ -6,7 +6,7 @@ use rand::{Rng, rng};
 use sdl2::keyboard::KeyboardState;
 use sdl2::{keyboard::Keycode, pixels::Color, rect::Rect, ttf::FontStyle};
 
-const BALL_SPEED: i32 = 5;
+const BALL_SPEED: i32 = 7;
 const BAR_SPEED: i32 = 20;
 const BALL_WIDTH: u32 = 30;
 const BALL_HEIGHT: u32 = 30;
@@ -345,7 +345,7 @@ impl Game {
             .map_err(|err| anyhow!("create texture from surface: {}", err))?;
         let target = Rect::new(
             (self.dimensions.width - surface.width()) as i32 / 2,
-            (self.dimensions.height - surface.height()) as i32 / 2 - 50,
+            (self.dimensions.height - surface.height()) as i32 / 2,
             surface.width(),
             surface.height(),
         );
