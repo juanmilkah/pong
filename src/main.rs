@@ -201,14 +201,16 @@ impl Game {
     }
 
     fn update_ball_position(&mut self) {
-        let old_x = self.ball.x;
         let old_y = self.ball.y;
-        // update position based on velocity and SPEED
-        self.ball.x += self.ball.velocity_x * BALL_SPEED;
-        self.ball.y += self.ball.velocity_y * BALL_SPEED;
+
+        // update position based on velocity and BALL_SPEED
+        self.ball.x += (self.ball.velocity_x * BALL_SPEED as f32) as i32;
+        self.ball.y += (self.ball.velocity_y * BALL_SPEED as f32) as i32;
 
         let mut rng = rng();
+        let mut collision_occurred = false;
 
+        // Check brick collisions
         for brick in self.bricks.iter_mut() {
             if !brick.is_visible {
                 continue;
@@ -222,85 +224,145 @@ impl Game {
             {
                 brick.is_visible = false;
                 self.state.score += POINTS;
+                collision_occurred = true;
 
-                // determine bounce direction
-                // top or below
-                if old_y + self.ball.height as i32 <= brick.y
-                    || old_y >= brick.y + brick.height as i32
-                {
-                    self.ball.velocity_y = -self.ball.velocity_y;
-                } else if old_x + self.ball.width as i32 <= brick.x
-                    || old_x >= brick.x + brick.width as i32
-                {
+                // Calculate collision physics with brick
+                let ball_center_x = self.ball.x + (self.ball.width as i32 / 2);
+                let ball_center_y = self.ball.y + (self.ball.height as i32 / 2);
+                let brick_center_x = brick.x + (brick.width as i32 / 2);
+                let brick_center_y = brick.y + (brick.height as i32 / 2);
+
+                // Calculate angle of impact for more realistic bounce
+                let dx = ball_center_x - brick_center_x;
+                let dy = ball_center_y - brick_center_y;
+
+                // Determine the collision side (top/bottom or left/right)
+                // For simplicity, we'll use penetration depth to decide
+                let w = (self.ball.width as i32 / 2) + (brick.width as i32 / 2);
+                let h = (self.ball.height as i32 / 2) + (brick.height as i32 / 2);
+                let wx = w - (dx.abs());
+                let wy = h - (dy.abs());
+
+                // Bounce based on the side with least penetration
+                if wx < wy {
+                    // Horizontal collision (left/right)
                     self.ball.velocity_x = -self.ball.velocity_x;
+
+                    // Add slight angle variation for more interesting gameplay
+                    self.ball.velocity_y += rng.random_range(-10..10) as f32 / 100.0;
+                } else {
+                    // Vertical collision (top/bottom)
+                    self.ball.velocity_y = -self.ball.velocity_y;
+
+                    // Add slight angle variation for more interesting gameplay
+                    self.ball.velocity_x += rng.random_range(-10..10) as f32 / 100.0;
                 }
+
+                // Normalize velocity to maintain consistent speed
+                self.ball.normalize_velocity();
                 break;
             }
+        }
 
-            // check horizontal boundaries
-            if self.ball.x <= 0 {
-                self.ball.x = 0;
-                self.ball.velocity_x = 1;
-            } else if self.ball.x + self.ball.width as i32 >= self.dimensions.width as i32 {
-                self.ball.x = self.dimensions.width as i32 - self.ball.width as i32;
-                self.ball.velocity_x = -1;
+        // check horizontal boundaries
+        if self.ball.x <= 0 {
+            self.ball.x = 0;
+            self.ball.velocity_x = self.ball.velocity_x.abs(); // Ensure positive
+            collision_occurred = true;
+        } else if self.ball.x + self.ball.width as i32 >= self.dimensions.width as i32 {
+            self.ball.x = self.dimensions.width as i32 - self.ball.width as i32;
+            self.ball.velocity_x = -self.ball.velocity_x.abs(); // Ensure negative
+            collision_occurred = true;
+        }
+
+        // check for vertical boundaries
+        if self.ball.y <= 0 {
+            self.ball.y = 0;
+            self.ball.velocity_y = self.ball.velocity_y.abs(); // Ensure positive
+            collision_occurred = true;
+
+            if self.ball.first_bounce {
+                self.ball.first_bounce = false;
+                // randomly choose x direction
+                self.ball.velocity_x = if rng.random_bool(0.5) { 1.0 } else { -1.0 };
+            }
+        } else if self.ball.y + self.ball.height as i32 >= self.dimensions.height as i32 {
+            self.state.lives -= 1;
+            if self.state.lives == 0 {
+                self.state.game_over = true;
             }
 
-            // check for vertical boundaries
-            if self.ball.y <= 0 {
-                self.ball.y = 0;
-                self.ball.velocity_y = 1;
-                if self.ball.first_bounce {
-                    self.ball.first_bounce = false;
-                    // randomly choose x direction
-                    self.ball.velocity_x = if rng.random_bool(0.5) { 1 } else { -1 };
-                }
-            } else if self.ball.y + self.ball.width as i32 >= self.dimensions.height as i32 {
-                self.state.lives -= 1;
-                if self.state.lives == 0 {
-                    self.state.game_over = true;
-                }
+            //reset ball position
+            self.ball = Ball::new(&self.bar);
+            return;
+        }
 
-                //reset ball position
-                self.ball = Ball::new(&self.bar);
-                return;
+        // check for collision with bar
+        if self.ball.velocity_y > 0.0 // moving downwards
+            && self.ball.y + self.ball.height as i32 >= self.bar.y // ball bottom at or below bar top
+            && old_y + self.ball.height as i32 <= self.bar.y // on prev frame ball was above bar
+            && self.ball.x + self.ball.width as i32 >= self.bar.x // ball right > bar left
+            && self.ball.x <= self.bar.x + self.bar.width as i32
+        // ball left < bar right
+        {
+            // Physics for bar collision - angle of bounce depends on where the ball hits the bar
+            collision_occurred = true;
+
+            // Calculate relative position of collision on bar (0.0 to 1.0)
+            let hit_position = (self.ball.x + (self.ball.width as i32 / 2) - self.bar.x) as f32
+                / self.bar.width as f32;
+
+            // Clamp hit_position between 0.0 and 1.0 to prevent errors
+            let hit_position = hit_position.max(0.0).min(1.0);
+
+            // Map hit position to an angle range: -60 degrees to +60 degrees
+            // Convert to radians: -π/3 to +π/3
+            let angle = (hit_position - 0.5) * std::f32::consts::PI / 1.5;
+
+            // Set the velocity components based on the angle
+            self.ball.velocity_x = angle.sin();
+            self.ball.velocity_y = -0.8; // Fixed upward component for more predictable gameplay
+
+            // Factor in paddle movement for more dynamic gameplay
+            if self.bar.velocity_x != 0.0 {
+                self.ball.velocity_x += (self.bar.velocity_x as f32) * 0.15;
             }
 
-            // check for collision with bar
-            if self.ball.velocity_y > 0 // moving downwards 
-            && self.ball.y + self.ball.height as i32 >= self.bar.y // ball on top of bar 
-            && old_y + self.ball.height as i32 <= self.bar.y // on prev frame ball above bar
-            && self.ball.x + self.ball.width as i32 >= self.bar.x // ball left > bar right
-            && self.ball.x <= self.bar.x +self.bar.width as i32
-            // ball right < bar left
-            {
-                // bounce the ball off the bar
-                self.ball.velocity_y = -1;
-                self.ball.y = self.bar.y - self.ball.height as i32;
-                if self.ball.first_bounce {
-                    self.ball.first_bounce = false;
-                    // randomly choose x direction
-                    self.ball.velocity_x = if rng.random_bool(0.5) { 1 } else { -1 };
-                }
+            // Normalize velocity to maintain consistent speed
+            self.ball.normalize_velocity();
+
+            // Ensure ball doesn't get stuck in the bar
+            self.ball.y = self.bar.y - self.ball.height as i32;
+
+            if self.ball.first_bounce {
+                self.ball.first_bounce = false;
             }
+        }
+
+        // Add some jitter on collision to make the game less predictable
+        if collision_occurred {
+            // Add tiny random variations to avoid repetitive patterns
+            self.ball.velocity_x += rng.random_range(-5..5) as f32 / 100.0;
+            self.ball.velocity_y += rng.random_range(-5..5) as f32 / 100.0;
+            self.ball.normalize_velocity();
         }
     }
 
     fn update_bar_position(&mut self, dir: Direction) {
         self.bar.velocity_x = match dir {
-            Direction::Right => 1,
-            Direction::Left => -1,
+            Direction::Right => 1.0,
+            Direction::Left => -1.0,
         };
 
-        self.bar.x += self.bar.velocity_x * BAR_SPEED;
+        self.bar.x += self.bar.velocity_x as i32 * BAR_SPEED;
 
         // check horizontal boundaries
         if self.bar.x <= 0 {
             self.bar.x = 0;
-            self.bar.velocity_x = 1;
+            self.bar.velocity_x = 1.0;
         } else if self.bar.x + self.bar.width as i32 >= self.dimensions.width as i32 {
             self.bar.x = self.dimensions.width as i32 - self.bar.width as i32;
-            self.bar.velocity_x = -1;
+            self.bar.velocity_x = -1.0;
         }
     }
 
@@ -420,8 +482,8 @@ struct Ball {
     y: i32,
     width: u32,
     height: u32,
-    velocity_x: i32,
-    velocity_y: i32,
+    velocity_x: f32,
+    velocity_y: f32,
     first_bounce: bool,
 }
 
@@ -438,9 +500,18 @@ impl Ball {
             y,
             width: BALL_WIDTH,
             height: BALL_HEIGHT,
-            velocity_x: 0,
-            velocity_y: -1,
+            velocity_x: 0.0,
+            velocity_y: -1.0,
             first_bounce: true,
+        }
+    }
+
+    fn normalize_velocity(&mut self) {
+        let speed =
+            f32::sqrt(self.velocity_x * self.velocity_x + self.velocity_y * self.velocity_y);
+        if speed != 0.0 {
+            self.velocity_x = self.velocity_x / speed;
+            self.velocity_y = self.velocity_y / speed;
         }
     }
 }
@@ -455,7 +526,7 @@ struct Bar {
     y: i32,
     width: u32,
     height: u32,
-    velocity_x: i32,
+    velocity_x: f32,
 }
 
 impl Bar {
@@ -468,7 +539,7 @@ impl Bar {
             y,
             width: BAR_WIDTH,
             height: BAR_HEIGHT,
-            velocity_x: 1,
+            velocity_x: 1.0,
         }
     }
 }
