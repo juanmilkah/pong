@@ -313,7 +313,7 @@ impl Game {
                 / self.bar.width as f32;
 
             // Clamp hit_position between 0.0 and 1.0 to prevent errors
-            let hit_position = hit_position.max(0.0).min(1.0);
+            let hit_position = hit_position.clamp(0.0, 1.0);
 
             // Map hit position to an angle range: -60 degrees to +60 degrees
             // Convert to radians: -π/3 to +π/3
@@ -325,7 +325,7 @@ impl Game {
 
             // Factor in paddle movement for more dynamic gameplay
             if self.bar.velocity_x != 0.0 {
-                self.ball.velocity_x += (self.bar.velocity_x as f32) * 0.15;
+                self.ball.velocity_x += (self.bar.velocity_x) * 0.15;
             }
 
             // Normalize velocity to maintain consistent speed
@@ -370,8 +370,8 @@ impl Game {
         let col_count =
             self.dimensions.width as i32 / (BRICK_WIDTH as i32 + BRICK_PADDING as i32) - 5;
 
-        let total_width = (BRICK_WIDTH as i32 * col_count as i32)
-            + (BRICK_PADDING as i32 * (col_count as i32 - 1));
+        let total_width =
+            (BRICK_WIDTH as i32 * col_count) + (BRICK_PADDING as i32 * (col_count - 1));
 
         // starting  positions
         let start_x = (self.dimensions.width as i32 - total_width) / 2;
@@ -379,7 +379,7 @@ impl Game {
 
         for row in 0..ROW_COUNT {
             for col in 0..col_count {
-                let brick_x = start_x + col as i32 * (BRICK_WIDTH as i32 + BRICK_PADDING as i32);
+                let brick_x = start_x + col * (BRICK_WIDTH as i32 + BRICK_PADDING as i32);
                 let brick_y = start_y + row as i32 * (BRICK_HEIGHT as i32 + BRICK_PADDING as i32);
                 self.bricks.push(Brick::new(brick_x, brick_y));
             }
@@ -510,8 +510,8 @@ impl Ball {
         let speed =
             f32::sqrt(self.velocity_x * self.velocity_x + self.velocity_y * self.velocity_y);
         if speed != 0.0 {
-            self.velocity_x = self.velocity_x / speed;
-            self.velocity_y = self.velocity_y / speed;
+            self.velocity_x /= speed;
+            self.velocity_y /= speed;
         }
     }
 }
